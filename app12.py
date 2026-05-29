@@ -2,75 +2,124 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="Biometric Payroll System", layout="wide")
+st.set_page_config(page_title="Biometric Payroll", layout="wide")
 
 st.title("🏢 Supermarket Biometric Payroll System")
 
-# Upload biometric attendance file
+# Upload Excel file
 uploaded_file = st.file_uploader(
-    "Upload Monthly Attendance Excel",
+    "Upload Biometric Excel File",
     type=["xlsx"]
 )
 
 if uploaded_file:
 
-    df = pd.read_excel(uploaded_file)
+    # Read excel without header
+    df = pd.read_excel(uploaded_file, header=None)
 
-    st.subheader("Attendance Data")
-    st.dataframe(df)
+    # Rename columns
+    df.columns = ["Employee ID", "Date", "Time"]
 
-    # Convert date column
-    df['Date'] = pd.to_datetime(df['Date'])
+    st.subheader("Raw Biometric Data")
+    st.dataframe(df.head(20))
 
-    # Convert In/Out times
-    df['In Time'] = pd.to_datetime(df['In Time'], errors='coerce')
-    df['Out Time'] = pd.to_datetime(df['Out Time'], errors='coerce')
+    # Combine Date + Time
+    df["Punch Datetime"] = pd.to_datetime(
+        df["Date"].astype(str) + " " + df["Time"].astype(str)
+    )
 
-    # Calculate working hours
-    df['Working Hours'] = (
-        df['Out Time'] - df['In Time']
+    # Sort data
+    df = df.sort_values(
+        by=["Employee ID", "Date", "Punch Datetime"]
+    )
+
+    # First IN time
+    first_punch = df.groupby(
+        ["Employee ID", "Date"]
+    )["Punch Datetime"].first().reset_index()
+
+    first_punch.rename(
+        columns={"Punch Datetime": "In Time"},
+        inplace=True
+    )
+
+    # Last OUT time
+    last_punch = df.groupby(
+        ["Employee ID", "Date"]
+    )["Punch Datetime"].last().reset_index()
+
+    last_punch.rename(
+        columns={"Punch Datetime": "Out Time"},
+        inplace=True
+    )
+
+    # Merge IN and OUT
+    attendance = pd.merge(
+        first_punch,
+        last_punch,
+        on=["Employee ID", "Date"]
+    )
+
+    # Working hours
+    attendance["Working Hours"] = (
+        attendance["Out Time"] - attendance["In Time"]
     ).dt.total_seconds() / 3600
 
-    # Attendance rules
-    df['Present'] = df['Working Hours'].apply(
-        lambda x: 1 if x >= 4 else 0
-    )
+    # Present / Absent
+    attendance["Present"] = attendance[
+        "Working Hours"
+    ].apply(lambda x: 1 if x >= 4 else 0)
 
-    # Overtime calculation
-    df['Overtime Hours'] = df['Working Hours'].apply(
-        lambda x: max(0, x - 8)
-    )
+    # Overtime
+    attendance["Overtime Hours"] = attendance[
+        "Working Hours"
+    ].apply(lambda x: max(0, x - 8))
 
-    # Employee payroll summary
-    payroll = df.groupby(
-        ['Employee ID', 'Name']
-    ).agg({
-        'Present': 'sum',
-        'Overtime Hours': 'sum'
-    }).reset_index()
+    st.subheader("Processed Attendance")
+    st.dataframe(attendance)
 
     # Salary settings
-    DAILY_SALARY = 800
-    OT_RATE = 100
-
-    # Payroll calculation
-    payroll['Basic Salary'] = payroll['Present'] * DAILY_SALARY
-    payroll['OT Pay'] = payroll['Overtime Hours'] * OT_RATE
-
-    payroll['Net Salary'] = (
-        payroll['Basic Salary'] +
-        payroll['OT Pay']
+    DAILY_SALARY = st.number_input(
+        "Daily Salary",
+        value=800
     )
 
-    st.subheader("Payroll Summary")
+    OT_RATE = st.number_input(
+        "Overtime Rate Per Hour",
+        value=100
+    )
+
+    # Payroll summary
+    payroll = attendance.groupby(
+        "Employee ID"
+    ).agg({
+        "Present": "sum",
+        "Overtime Hours": "sum"
+    }).reset_index()
+
+    # Salary calculations
+    payroll["Basic Salary"] = (
+        payroll["Present"] * DAILY_SALARY
+    )
+
+    payroll["OT Pay"] = (
+        payroll["Overtime Hours"] * OT_RATE
+    )
+
+    payroll["Net Salary"] = (
+        payroll["Basic Salary"] +
+        payroll["OT Pay"]
+    )
+
+    st.subheader("💰 Payroll Summary")
     st.dataframe(payroll)
 
-    # Dashboard Metrics
+    # Dashboard
     col1, col2, col3 = st.columns(3)
 
     col1.metric(
         "Total Employees",
-        len(payroll)
+        payroll.shape[0]
     )
 
     col2.metric(
@@ -80,17 +129,24 @@ if uploaded_file:
 
     col3.metric(
         "Total OT Hours",
-        round(payroll['Overtime Hours'].sum(), 2)
+        round(
+            payroll["Overtime Hours"].sum(),
+            2
+        )
     )
 
     # Download payroll report
-    output_file = "payroll_report.xlsx"
+    payroll_file = "payroll_report.xlsx"
 
-    payroll.to_excel(output_file, index=False)
+    payroll.to_excel(
+        payroll_file,
+        index=False
+    )
 
-    with open(output_file, "rb") as f:
+    with open(payroll_file, "rb") as f:
+
         st.download_button(
-            "⬇ Download Payroll Report",
-            f,
+            label="⬇ Download Payroll Report",
+            data=f,
             file_name="payroll_report.xlsx"
         )
