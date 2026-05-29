@@ -18,6 +18,7 @@ st.set_page_config(
 # DATABASE
 # =========================================================
 conn = sqlite3.connect("hrms.db", check_same_thread=False)
+conn.execute('PRAGMA journal_mode=WAL;')
 cursor = conn.cursor()
 
 cursor.execute('''
@@ -159,7 +160,13 @@ def get_employees():
 
 
 def get_attendance():
-    return pd.read_sql_query("SELECT * FROM attendance", conn)
+    df = pd.read_sql_query("SELECT * FROM attendance", conn)
+
+    if not df.empty:
+        df['emp_id'] = df['emp_id'].astype(str).str.strip()
+        df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+
+    return df
 
 # =========================================================
 # DASHBOARD
@@ -178,6 +185,7 @@ if page == "Dashboard":
     today_attendance = 0
     if not att_df.empty:
         today = datetime.now().strftime('%Y-%m-%d')
+        att_df['date'] = pd.to_datetime(att_df['date']).dt.strftime('%Y-%m-%d')
         today_attendance = len(att_df[att_df['date'] == today])
 
     st.markdown("""
@@ -340,6 +348,10 @@ elif page == "Attendance Upload":
                 'Date'
             ])
 
+            # CLEAR OLD ATTENDANCE BEFORE IMPORT
+            cursor.execute('DELETE FROM attendance')
+            conn.commit()
+
             for (emp_id, date), group in grouped:
 
                 times = sorted(group['Time'].tolist())
@@ -392,8 +404,11 @@ elif page == "Payroll":
 
     for _, emp in emp_df.iterrows():
 
+        att_df['emp_id'] = att_df['emp_id'].astype(str).str.strip()
+        emp_id = str(emp['emp_id']).strip()
+
         emp_att = att_df[
-            att_df['emp_id'] == emp['emp_id']
+            att_df['emp_id'] == emp_id
         ]
 
         days = len(emp_att)
