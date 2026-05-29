@@ -3,211 +3,183 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 import plotly.express as px
-import plotly.graph_objects as go
-from pathlib import Path
-import hashlib
 
-# ============================================================
+# =====================================================
 # PAGE CONFIG
-# ============================================================
+# =====================================================
 st.set_page_config(
-    page_title="Smart Payroll HRMS",
+    page_title="Payroll Pro",
     page_icon="💼",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ============================================================
-# CUSTOM CSS
-# ============================================================
+# =====================================================
+# PROFESSIONAL UI DESIGN
+# =====================================================
 st.markdown("""
 <style>
-    .main {
-        background-color: #f5f7fa;
-    }
 
-    .stMetric {
-        background-color: white;
-        padding: 15px;
-        border-radius: 12px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-    }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    .block-container {
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-    }
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+}
 
-    .css-1d391kg {
-        background-color: #111827;
-    }
+.stApp {
+    background-color: #f4f7fb;
+}
 
-    h1, h2, h3 {
-        color: #111827;
-    }
+section[data-testid="stSidebar"] {
+    background-color: #111827;
+    border-right: 1px solid #1f2937;
+}
 
-    .salary-card {
-        background: linear-gradient(135deg, #1d4ed8, #2563eb);
-        padding: 20px;
-        border-radius: 15px;
-        color: white;
-    }
+section[data-testid="stSidebar"] * {
+    color: white;
+}
 
-    .attendance-card {
-        background: linear-gradient(135deg, #059669, #10b981);
-        padding: 20px;
-        border-radius: 15px;
-        color: white;
-    }
+.main-title {
+    font-size: 34px;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 5px;
+}
 
-    .danger-card {
-        background: linear-gradient(135deg, #dc2626, #ef4444);
-        padding: 20px;
-        border-radius: 15px;
-        color: white;
-    }
+.sub-title {
+    color: #6b7280;
+    font-size: 15px;
+    margin-bottom: 30px;
+}
+
+.card {
+    background: white;
+    padding: 24px;
+    border-radius: 18px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+    border: 1px solid #e5e7eb;
+}
+
+.metric-card {
+    background: white;
+    padding: 24px;
+    border-radius: 18px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+}
+
+.metric-title {
+    color: #6b7280;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.metric-value {
+    color: #111827;
+    font-size: 34px;
+    font-weight: 700;
+    margin-top: 10px;
+}
+
+.stButton>button {
+    background-color: #2563eb;
+    color: white;
+    border-radius: 10px;
+    border: none;
+    padding: 10px 20px;
+    font-weight: 600;
+}
+
+.stButton>button:hover {
+    background-color: #1d4ed8;
+    color: white;
+}
+
+.stDataFrame {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 1rem;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================================
+# =====================================================
 # DATABASE
-# ============================================================
-DB_NAME = "payroll_system.db"
-
-conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+# =====================================================
+conn = sqlite3.connect("payroll.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# ============================================================
-# CREATE TABLES
-# ============================================================
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS employees (
+    emp_id TEXT,
+    name TEXT,
+    department TEXT,
+    designation TEXT,
+    salary REAL
+)
+''')
 
-def create_tables():
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS employees (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        emp_id TEXT UNIQUE,
-        name TEXT,
-        department TEXT,
-        designation TEXT,
-        salary REAL,
-        joining_date TEXT
-    )
-    ''')
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS attendance (
+    emp_id TEXT,
+    date TEXT,
+    check_in TEXT,
+    check_out TEXT,
+    working_hours REAL,
+    status TEXT
+)
+''')
 
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS attendance (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        emp_id TEXT,
-        date TEXT,
-        check_in TEXT,
-        check_out TEXT,
-        working_hours REAL,
-        status TEXT
-    )
-    ''')
+conn.commit()
 
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS payroll (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        emp_id TEXT,
-        month TEXT,
-        basic_salary REAL,
-        overtime REAL,
-        deductions REAL,
-        net_salary REAL
-    )
-    ''')
-
-    conn.commit()
-
-create_tables()
-
-# ============================================================
+# =====================================================
 # SIDEBAR
-# ============================================================
-st.sidebar.title("💼 Smart Payroll HRMS")
+# =====================================================
+st.sidebar.title("💼 Payroll Pro")
+st.sidebar.caption("Biometric Payroll Management")
 st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
-    "Navigation",
+    "MENU",
     [
         "Dashboard",
         "Employees",
-        "Attendance Upload",
-        "Payroll",
-        "Reports"
+        "Attendance",
+        "Payroll Reports"
     ]
 )
 
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
-
-def add_employee(emp_id, name, dept, designation, salary, joining_date):
-    cursor.execute('''
-    INSERT OR IGNORE INTO employees
-    (emp_id, name, department, designation, salary, joining_date)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ''', (emp_id, name, dept, designation, salary, joining_date))
-    conn.commit()
-
-
-def get_employees():
+# =====================================================
+# FUNCTIONS
+# =====================================================
+def load_employees():
     return pd.read_sql_query("SELECT * FROM employees", conn)
 
 
-def get_attendance():
+def load_attendance():
     return pd.read_sql_query("SELECT * FROM attendance", conn)
 
-
-def calculate_payroll(emp_id, month):
-    employee = pd.read_sql_query(
-        f"SELECT * FROM employees WHERE emp_id='{emp_id}'", conn
-    )
-
-    attendance = pd.read_sql_query(
-        f"SELECT * FROM attendance WHERE emp_id='{emp_id}'",
-        conn
-    )
-
-    if employee.empty:
-        return None
-
-    basic_salary = employee.iloc[0]['salary']
-
-    present_days = len(attendance[attendance['status'] == 'Present'])
-
-    per_day_salary = basic_salary / 30
-
-    earned_salary = per_day_salary * present_days
-
-    overtime = max(0, present_days - 26) * 500
-
-    deductions = max(0, 30 - present_days) * 200
-
-    net_salary = earned_salary + overtime - deductions
-
-    return {
-        'basic_salary': basic_salary,
-        'present_days': present_days,
-        'overtime': overtime,
-        'deductions': deductions,
-        'net_salary': round(net_salary, 2)
-    }
-
-# ============================================================
+# =====================================================
 # DASHBOARD
-# ============================================================
+# =====================================================
 if menu == "Dashboard":
 
-    st.title("📊 Payroll Dashboard")
-
-    employees_df = get_employees()
-    attendance_df = get_attendance()
+    employees_df = load_employees()
+    attendance_df = load_attendance()
 
     total_employees = len(employees_df)
 
+    total_salary = 0
+    if not employees_df.empty:
+        total_salary = employees_df['salary'].sum()
+
     present_today = 0
+
     if not attendance_df.empty:
         today = datetime.now().strftime("%Y-%m-%d")
         present_today = len(
@@ -216,115 +188,121 @@ if menu == "Dashboard":
             ]
         )
 
-    total_salary = 0
-    if not employees_df.empty:
-        total_salary = employees_df['salary'].sum()
+    st.markdown("<div class='main-title'>Dashboard</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sub-title'>Professional biometric payroll management system</div>", unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
         st.markdown(f"""
-        <div class='salary-card'>
-            <h3>Total Employees</h3>
-            <h1>{total_employees}</h1>
+        <div class='metric-card'>
+            <div class='metric-title'>TOTAL EMPLOYEES</div>
+            <div class='metric-value'>{total_employees}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with col2:
         st.markdown(f"""
-        <div class='attendance-card'>
-            <h3>Present Today</h3>
-            <h1>{present_today}</h1>
+        <div class='metric-card'>
+            <div class='metric-title'>PRESENT TODAY</div>
+            <div class='metric-value'>{present_today}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with col3:
         st.markdown(f"""
-        <div class='danger-card'>
-            <h3>Monthly Payroll</h3>
-            <h1>₹ {int(total_salary):,}</h1>
+        <div class='metric-card'>
+            <div class='metric-title'>MONTHLY PAYROLL</div>
+            <div class='metric-value'>₹ {int(total_salary):,}</div>
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("---")
+    st.markdown("<br>", unsafe_allow_html=True)
 
     if not employees_df.empty:
-        dept_chart = employees_df['department'].value_counts().reset_index()
-        dept_chart.columns = ['Department', 'Employees']
 
-        fig = px.pie(
-            dept_chart,
-            names='Department',
-            values='Employees',
-            title='Department Distribution'
+        dept = employees_df['department'].value_counts().reset_index()
+        dept.columns = ['Department', 'Employees']
+
+        fig = px.bar(
+            dept,
+            x='Department',
+            y='Employees',
+            text='Employees'
+        )
+
+        fig.update_layout(
+            height=400,
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            font=dict(color='#111827'),
+            margin=dict(l=20, r=20, t=40, b=20)
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("Recent Employees")
+    st.markdown("### Employee Overview")
     st.dataframe(employees_df, use_container_width=True)
 
-# ============================================================
+# =====================================================
 # EMPLOYEES
-# ============================================================
+# =====================================================
 elif menu == "Employees":
 
-    st.title("👨‍💼 Employee Management")
+    st.markdown("<div class='main-title'>Employees</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sub-title'>Manage employee information</div>", unsafe_allow_html=True)
 
-    with st.form("employee_form"):
+    with st.container():
 
-        col1, col2 = st.columns(2)
+        with st.form("employee_form"):
 
-        with col1:
-            emp_id = st.text_input("Employee ID")
-            name = st.text_input("Employee Name")
-            department = st.selectbox(
-                "Department",
-                [
-                    "HR",
-                    "IT",
-                    "Finance",
-                    "Marketing",
-                    "Operations"
-                ]
-            )
+            col1, col2 = st.columns(2)
 
-        with col2:
-            designation = st.text_input("Designation")
-            salary = st.number_input("Monthly Salary", min_value=0)
-            joining_date = st.date_input("Joining Date")
+            with col1:
+                emp_id = st.text_input("Employee ID")
+                name = st.text_input("Employee Name")
+                department = st.selectbox(
+                    "Department",
+                    ["HR", "IT", "Finance", "Marketing", "Operations"]
+                )
 
-        submit = st.form_submit_button("Add Employee")
+            with col2:
+                designation = st.text_input("Designation")
+                salary = st.number_input("Salary", min_value=0)
 
-        if submit:
-            add_employee(
-                emp_id,
-                name,
-                department,
-                designation,
-                salary,
-                str(joining_date)
-            )
+            submit = st.form_submit_button("Add Employee")
 
-            st.success("Employee Added Successfully")
+            if submit:
+                cursor.execute('''
+                INSERT INTO employees VALUES (?, ?, ?, ?, ?)
+                ''', (
+                    emp_id,
+                    name,
+                    department,
+                    designation,
+                    salary
+                ))
+
+                conn.commit()
+
+                st.success("Employee added successfully")
 
     st.markdown("---")
 
-    st.subheader("Employee Records")
+    employees_df = load_employees()
 
-    employee_df = get_employees()
+    st.dataframe(employees_df, use_container_width=True)
 
-    st.dataframe(employee_df, use_container_width=True)
-
-# ============================================================
+# =====================================================
 # ATTENDANCE
-# ============================================================
-elif menu == "Attendance Upload":
+# =====================================================
+elif menu == "Attendance":
 
-    st.title("📥 Biometric Attendance Upload")
+    st.markdown("<div class='main-title'>Attendance Upload</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sub-title'>Upload biometric attendance excel sheet</div>", unsafe_allow_html=True)
 
     uploaded_file = st.file_uploader(
-        "Upload Biometric Excel File",
+        "Upload Excel File",
         type=['xlsx', 'xls', 'csv']
     )
 
@@ -335,12 +313,8 @@ elif menu == "Attendance Upload":
         else:
             df = pd.read_excel(uploaded_file)
 
-        st.subheader("Uploaded Data")
+        st.markdown("### Uploaded Attendance")
         st.dataframe(df, use_container_width=True)
-
-        st.markdown("---")
-
-        st.info("Expected Columns: Employee ID, Date, Check In, Check Out")
 
         if st.button("Process Attendance"):
 
@@ -355,20 +329,16 @@ elif menu == "Attendance Upload":
                     try:
                         in_time = pd.to_datetime(check_in)
                         out_time = pd.to_datetime(check_out)
-
                         working_hours = (
                             out_time - in_time
                         ).seconds / 3600
-
                     except:
                         working_hours = 0
 
-                    status = "Present" if working_hours >= 4 else "Half Day"
+                    status = "Present"
 
                     cursor.execute('''
-                    INSERT INTO attendance
-                    (emp_id, date, check_in, check_out, working_hours, status)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO attendance VALUES (?, ?, ?, ?, ?, ?)
                     ''', (
                         emp_id,
                         str(date),
@@ -380,166 +350,78 @@ elif menu == "Attendance Upload":
 
                 conn.commit()
 
-                st.success("Attendance Processed Successfully")
+                st.success("Attendance processed successfully")
 
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(e)
 
-# ============================================================
-# PAYROLL
-# ============================================================
-elif menu == "Payroll":
+# =====================================================
+# PAYROLL REPORTS
+# =====================================================
+elif menu == "Payroll Reports":
 
-    st.title("💰 Payroll Processing")
+    st.markdown("<div class='main-title'>Payroll Reports</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sub-title'>Employee payroll summary and analytics</div>", unsafe_allow_html=True)
 
-    employees = get_employees()
+    employees_df = load_employees()
+    attendance_df = load_attendance()
 
-    if employees.empty:
-        st.warning("No employees found")
+    payroll_data = []
 
-    else:
+    if not employees_df.empty:
 
-        emp_id = st.selectbox(
-            "Select Employee",
-            employees['emp_id']
-        )
+        for _, emp in employees_df.iterrows():
 
-        month = st.selectbox(
-            "Select Month",
-            [
-                "January",
-                "February",
-                "March",
-                "April",
-                "May",
-                "June",
-                "July",
-                "August",
-                "September",
-                "October",
-                "November",
-                "December"
+            emp_attendance = attendance_df[
+                attendance_df['emp_id'] == emp['emp_id']
             ]
+
+            present_days = len(emp_attendance)
+
+            per_day = emp['salary'] / 30
+
+            net_salary = round(per_day * present_days, 2)
+
+            payroll_data.append({
+                'Employee ID': emp['emp_id'],
+                'Name': emp['name'],
+                'Department': emp['department'],
+                'Present Days': present_days,
+                'Net Salary': net_salary
+            })
+
+    payroll_df = pd.DataFrame(payroll_data)
+
+    st.dataframe(payroll_df, use_container_width=True)
+
+    if not payroll_df.empty:
+
+        fig = px.bar(
+            payroll_df,
+            x='Name',
+            y='Net Salary',
+            text='Net Salary'
         )
 
-        if st.button("Generate Payroll"):
+        fig.update_layout(
+            height=450,
+            plot_bgcolor='white',
+            paper_bgcolor='white'
+        )
 
-            payroll = calculate_payroll(emp_id, month)
+        st.plotly_chart(fig, use_container_width=True)
 
-            if payroll:
+        csv = payroll_df.to_csv(index=False).encode('utf-8')
 
-                col1, col2 = st.columns(2)
+        st.download_button(
+            "Download Payroll Report",
+            csv,
+            file_name='payroll_report.csv',
+            mime='text/csv'
+        )
 
-                with col1:
-                    st.metric(
-                        "Basic Salary",
-                        f"₹ {payroll['basic_salary']:,.0f}"
-                    )
-
-                    st.metric(
-                        "Present Days",
-                        payroll['present_days']
-                    )
-
-                with col2:
-                    st.metric(
-                        "Overtime",
-                        f"₹ {payroll['overtime']:,.0f}"
-                    )
-
-                    st.metric(
-                        "Deductions",
-                        f"₹ {payroll['deductions']:,.0f}"
-                    )
-
-                st.markdown("---")
-
-                st.success(
-                    f"Net Salary: ₹ {payroll['net_salary']:,.2f}"
-                )
-
-                if st.button("Save Payroll"):
-
-                    cursor.execute('''
-                    INSERT INTO payroll
-                    (emp_id, month, basic_salary, overtime, deductions, net_salary)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (
-                        emp_id,
-                        month,
-                        payroll['basic_salary'],
-                        payroll['overtime'],
-                        payroll['deductions'],
-                        payroll['net_salary']
-                    ))
-
-                    conn.commit()
-
-                    st.success("Payroll Saved")
-
-# ============================================================
-# REPORTS
-# ============================================================
-elif menu == "Reports":
-
-    st.title("📑 Reports & Analytics")
-
-    payroll_df = pd.read_sql_query(
-        "SELECT * FROM payroll",
-        conn
-    )
-
-    attendance_df = get_attendance()
-
-    tab1, tab2 = st.tabs([
-        "Payroll Reports",
-        "Attendance Reports"
-    ])
-
-    with tab1:
-
-        st.subheader("Payroll History")
-
-        st.dataframe(payroll_df, use_container_width=True)
-
-        if not payroll_df.empty:
-
-            fig = px.bar(
-                payroll_df,
-                x='emp_id',
-                y='net_salary',
-                title='Employee Salary Distribution'
-            )
-
-            st.plotly_chart(fig, use_container_width=True)
-
-            csv = payroll_df.to_csv(index=False).encode('utf-8')
-
-            st.download_button(
-                "Download Payroll Report",
-                csv,
-                file_name='payroll_report.csv',
-                mime='text/csv'
-            )
-
-    with tab2:
-
-        st.subheader("Attendance Records")
-
-        st.dataframe(attendance_df, use_container_width=True)
-
-        if not attendance_df.empty:
-
-            fig2 = px.histogram(
-                attendance_df,
-                x='status',
-                title='Attendance Status Overview'
-            )
-
-            st.plotly_chart(fig2, use_container_width=True)
-
-# ============================================================
+# =====================================================
 # FOOTER
-# ============================================================
+# =====================================================
 st.markdown("---")
-st.caption("Smart Payroll HRMS • Professional Biometric Payroll System • Streamlit Edition")
+st.caption("Payroll Pro • Professional HRMS & Biometric Payroll Software")
