@@ -303,52 +303,71 @@ elif page == "Attendance Upload":
 
     if uploaded_file:
 
+        # =====================================================
+        # READ FILE
+        # =====================================================
         if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
+            df = pd.read_csv(uploaded_file, header=None)
         else:
-            df = pd.read_excel(uploaded_file)
+            df = pd.read_excel(uploaded_file, header=None)
 
-        st.info("Detected Columns")
-        st.write(df.columns.tolist())
+        # =====================================================
+        # YOUR BIOMETRIC FORMAT
+        # =====================================================
+        # Column 0 = Employee ID
+        # Column 1 = Date
+        # Column 2 = Time
 
+        df.columns = ['Employee ID', 'Date', 'Time']
+
+        # CLEAN DATA
+        df['Employee ID'] = df['Employee ID'].astype(str).str.strip()
+        df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
+        df['Time'] = df['Time'].astype(str)
+
+        st.success("Biometric file detected successfully")
+
+        st.markdown("### Attendance Preview")
         st.dataframe(df.head(20), use_container_width=True)
 
-        st.markdown("### Map Columns")
-
-        emp_column = st.selectbox("Employee ID Column", df.columns)
-        date_column = st.selectbox("Date Column", df.columns)
-        in_column = st.selectbox("Check In Column", df.columns)
-        out_column = st.selectbox("Check Out Column", df.columns)
-
+        # =====================================================
+        # PROCESS ATTENDANCE
+        # =====================================================
         if st.button("Process Attendance"):
 
-            for _, row in df.iterrows():
+            grouped = df.groupby([
+                'Employee ID',
+                'Date'
+            ])
+
+            for (emp_id, date), group in grouped:
+
+                times = sorted(group['Time'].tolist())
+
+                check_in = times[0]
+                check_out = times[-1]
 
                 try:
-                    emp_id = row[emp_column]
-                    date = row[date_column]
-                    check_in = row[in_column]
-                    check_out = row[out_column]
+                    in_time = pd.to_datetime(check_in)
+                    out_time = pd.to_datetime(check_out)
 
-                    try:
-                        in_time = pd.to_datetime(check_in)
-                        out_time = pd.to_datetime(check_out)
-                        hours = (out_time - in_time).seconds / 3600
-                    except:
-                        hours = 0
-
-                    cursor.execute('''
-                    INSERT INTO attendance VALUES (?, ?, ?, ?, ?)
-                    ''', (
-                        str(emp_id),
-                        str(date),
-                        str(check_in),
-                        str(check_out),
-                        hours
-                    ))
+                    working_hours = (
+                        out_time - in_time
+                    ).seconds / 3600
 
                 except:
-                    pass
+                    working_hours = 0
+
+                cursor.execute('''
+                INSERT INTO attendance
+                VALUES (?, ?, ?, ?, ?)
+                ''', (
+                    emp_id,
+                    date,
+                    check_in,
+                    check_out,
+                    round(working_hours, 2)
+                ))
 
             conn.commit()
 
